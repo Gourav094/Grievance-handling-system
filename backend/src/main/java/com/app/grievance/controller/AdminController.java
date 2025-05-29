@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/admin")
+@RequestMapping("/api/admin")
 public class AdminController {
 
     @Autowired
@@ -19,16 +19,6 @@ public class AdminController {
     @GetMapping("/users")
     public ResponseEntity<List<User>> getAllUsers() {
         return ResponseEntity.ok(adminService.getAllUsers());
-    }
-
-    @GetMapping("/users/role/{role}")
-    public ResponseEntity<List<User>> getUsersByRole(@PathVariable String role) {
-        return ResponseEntity.ok(adminService.getAllUsersByRole(role));
-    }
-
-    @PostMapping("/users")
-    public ResponseEntity<User> createUser(@RequestBody User user) {
-        return ResponseEntity.ok(adminService.createUser(user));
     }
 
     @GetMapping("/users/{id}")
@@ -47,11 +37,5 @@ public class AdminController {
     public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
         adminService.deleteUser(id);
         return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/users/{userId}/assign-role")
-    public ResponseEntity<User> assignRole(@PathVariable Long userId,
-                                           @RequestParam String roleName) {
-        return ResponseEntity.ok(adminService.assignRoleToUser(userId, roleName));
     }
 }
