@@ -64,9 +64,22 @@ public class GrievanceForumController {
   @GetMapping("/grievances/filter")
   public ResponseEntity<?> filterGrievances(
           @RequestParam(required = false) String status,
-          @RequestParam(required = false, name = "created_by") String createdBy,
-          @RequestParam(required = false, name = "assigned_to") String assignedTo
+          @RequestParam(required = false) String createdBy,
+          @RequestParam(required = false) String assignedTo
   ) {
-    return ResponseEntity.ok(grievanceForumService.filterGrievances(status, createdBy, assignedTo));
+    var filtered = grievanceForumService.filterGrievances(status, createdBy, assignedTo);
+    if (filtered == null || filtered.isEmpty()) {
+      return ResponseEntity.status(404).body("No grievances found matching the filter criteria.");
+    }
+    return ResponseEntity.ok(filtered);
+  }
+
+  @PatchMapping("/{id}")
+  public ResponseEntity<Grievance> updateGrievance(
+          @PathVariable Long id,
+          @RequestBody Grievance grievancePayload) {
+
+      Grievance updated = grievanceForumService.updateGrievance(id, grievancePayload);
+      return ResponseEntity.ok(updated);
   }
 }

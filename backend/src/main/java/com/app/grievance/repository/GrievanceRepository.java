@@ -23,11 +23,13 @@ public interface GrievanceRepository extends JpaRepository<Grievance, Long> {
   Page<Grievance> findAll(Pageable pageable);
 
   //for filtering
-  @Query("SELECT g FROM Grievance g WHERE "
-          + "(:status IS NULL OR g.status = :status) AND "
-          + "(:createdBy IS NULL OR g.createdBy = :createdBy) AND "
-          + "(:assignedTo IS NULL OR g.assignedTo = :assignedTo)")
+  @Query("SELECT g FROM Grievance g WHERE " +
+          "(:status IS NULL OR g.status = :status) AND " +
+          "(:createdBy IS NULL OR g.createdBy = :createdBy) AND " +
+          "(:assignedTo IS NULL OR g.assignedTo = :assignedTo) AND " +
+          "g.createdBy IS NOT NULL")
   List<Grievance> filterGrievances(@Param("status") String status,
                                    @Param("createdBy") String createdBy,
                                    @Param("assignedTo") String assignedTo);
+
 }

@@ -6,6 +6,9 @@ public class GrievanceRequest {
 
   private Long id;
 
+  @NotBlank(message = "Username cannot be blank")
+  private String username;
+
   @NotBlank(message = "Comment cannot be blank")
   private String comment;
 
@@ -15,6 +18,14 @@ public class GrievanceRequest {
 
   public void setId(Long id) {
     this.id = id;
+  }
+
+  public String getUsername() {
+    return username;
+  }
+
+  public void setUsername(String username) {
+    this.username = username;
   }
 
   public String getComment() {
