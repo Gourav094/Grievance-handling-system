@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -13,9 +12,12 @@ import {
   Calendar, 
   Send, 
   User,
-  Clock
+  Clock,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 const GrievanceDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -26,26 +28,26 @@ const GrievanceDetail = () => {
 
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch grievance details
-  const { 
-    data: grievance, 
+  const {
+    data: grievance,
     isLoading,
-    error 
+    error
   } = useQuery({
     queryKey: ['grievance', id],
     queryFn: () => grievanceApi.getGrievanceById(id || ''),
-    enabled: !!id
+    enabled: !!id && !!user,
   });
 
   // Status update mutation
   const updateStatusMutation = useMutation({
     mutationFn: (newStatus: GrievanceStatus) => {
-      return grievanceApi.createGrievance({ 
-        ...grievance,
-        id: grievance.id,
-        status: newStatus 
-      });
+      return grievanceApi.updateGrievance(grievance.id, { status: newStatus });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['grievance', id] });
@@ -58,13 +60,11 @@ const GrievanceDetail = () => {
 
   // Add comment mutation
   const addCommentMutation = useMutation({
-    mutationFn: (commentText: string) => {
+    mutationFn: () => {
       return grievanceApi.addComment({ 
         grievanceId: grievance.id,
-        text: commentText,
-        userId: user?.id || '',
-        userName: user?.name || '',
-        isAdmin: user?.role === 'admin'
+        username: user?.name || '',
+        comment: comment
       });
     },
     onSuccess: () => {
@@ -76,6 +76,59 @@ const GrievanceDetail = () => {
       });
     }
   });
+
+  // Update comment mutation
+  const updateCommentMutation = useMutation({
+    mutationFn: ({ id, text }: { id: string; text: string }) => {
+      return grievanceApi.updateComment({ id, text });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['grievance', id] });
+      toast({
+        title: "Comment updated",
+        description: "Your comment has been updated successfully"
+      });
+    }
+  });
+
+  const handleUpdateComment = (commentId: string, newText: string) => {
+    if (!newText.trim()) {
+      toast({
+        title: "Error",
+        description: "Comment cannot be empty",
+        variant: "destructive"
+      });
+      return;
+    }
+    updateCommentMutation.mutate({ id: commentId, text: newText });
+  };
+
+  // Delete comment mutation
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: string) => {
+      return grievanceApi.deleteComment(commentId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['grievance', id] });
+      toast({
+        title: "Comment deleted",
+        description: "Your comment has been deleted successfully"
+      });
+    }
+  });
+
+  const handleDeleteComment = (commentId: string) => {
+    setDeleteConfirmId(commentId);
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirmId) {
+      deleteCommentMutation.mutate(deleteConfirmId);
+      setDeleteConfirmId(null);
+    }
+  };
+
+  const cancelDelete = () => setDeleteConfirmId(null);
 
   // Handle loading state
   if (isLoading) {
@@ -104,7 +157,8 @@ const GrievanceDetail = () => {
   }
 
   // Check if user has permission to view this grievance
-  const hasPermission = user?.role === 'admin' || grievance.userId === user?.id;
+  const hasPermission = user?.role === 'admin' || grievance.createdBy === user?.name;
+  console.log('User:', user);
   
   if (!hasPermission) {
     return (
@@ -127,11 +181,16 @@ const GrievanceDetail = () => {
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!comment.trim()) return;
-    
+    if (!comment.trim()) {
+      toast({
+        title: "Error",
+        description: "Comment cannot be empty",
+        variant: "destructive"
+      });
+      return;
+    }
     try {
-      addCommentMutation.mutate(comment);
+      addCommentMutation.mutate();
     } catch (error) {
       console.error('Error adding comment:', error);
       toast({
@@ -140,6 +199,25 @@ const GrievanceDetail = () => {
         variant: "destructive"
       });
     }
+  };
+
+  const handleEditClick = (comment: any) => {
+    setEditingCommentId(comment.commentId);
+    setEditingText(comment.comment);
+    setTimeout(() => editInputRef.current?.focus(), 100);
+  };
+
+  const handleEditSave = (commentId: string) => {
+    if (editingText.trim()) {
+      handleUpdateComment(commentId, editingText);
+      setEditingCommentId(null);
+      setEditingText('');
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditingCommentId(null);
+    setEditingText('');
   };
 
   return (
@@ -170,11 +248,15 @@ const GrievanceDetail = () => {
                   <Clock className="mr-1 h-4 w-4" />
                   {new Date(grievance.createdAt).toLocaleTimeString()}
                 </span>
+                <span className="flex items-center">
+                  <User className="mr-1 h-4 w-4" />
+                  Assigned To: {grievance.assignedTo || "Unassigned"}
+              </span>
               </div>
             </div>
-            <div>
+            <div className="flex flex-col items-center gap-2">
               <span className={`
-                ${grievance.status === 'pending' ? 'grievance-status-pending' : ''}
+                ${grievance.status === 'open' ? 'grievance-status-open' : ''}
                 ${grievance.status === 'in-progress' ? 'grievance-status-inprogress' : ''}
                 ${grievance.status === 'resolved' ? 'grievance-status-resolved' : ''}
                 ${grievance.status === 'rejected' ? 'grievance-status-rejected' : ''}
@@ -203,11 +285,11 @@ const GrievanceDetail = () => {
               <h2 className="text-lg font-medium mb-4">Update Status</h2>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  variant={grievance.status === 'pending' ? 'default' : 'outline'}
-                  onClick={() => handleStatusChange('pending')}
+                  variant={grievance.status === 'open' ? 'default' : 'outline'}
+                  onClick={() => handleStatusChange('open')}
                   disabled={updateStatusMutation.isPending}
                 >
-                  Pending
+                  Open
                 </Button>
                 <Button
                   variant={grievance.status === 'in-progress' ? 'default' : 'outline'}
@@ -236,39 +318,7 @@ const GrievanceDetail = () => {
 
           {/* Comments Section */}
           <div className="mt-8 pt-6 border-t border-border">
-            <h2 className="text-lg font-medium mb-4 flex items-center">
-              <MessageSquare className="mr-2 h-5 w-5" />
-              Comments & Updates
-            </h2>
-
-            <div className="space-y-4 mb-6">
-              {grievance.comments && grievance.comments.length > 0 ? (
-                grievance.comments.map((comment: any) => (
-                  <div 
-                    key={comment.id} 
-                    className={`p-4 rounded-lg ${
-                      comment.isAdmin 
-                        ? 'bg-primary/10 border border-primary/20' 
-                        : 'bg-muted'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="font-medium">
-                        {comment.userName} {comment.isAdmin && '(Admin)'}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(comment.createdAt).toLocaleString()}
-                      </div>
-                    </div>
-                    <p className="text-sm">{comment.text}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-6 text-muted-foreground">
-                  No comments yet.
-                </div>
-              )}
-            </div>
+          
 
             {/* Add Comment Form */}
             <form onSubmit={handleAddComment}>
@@ -295,8 +345,113 @@ const GrievanceDetail = () => {
               </div>
             </form>
           </div>
+
+          <hr className="my-6 border-border" />
+          <h2 className="text-lg font-medium mb-4 flex items-center">
+              <MessageSquare className="mr-2 h-5 w-5" />
+              Comments & Updates
+            </h2>
+
+          <div className="space-y-6 mb-10 w-full mx-auto mt-5">
+                {grievance.comments && grievance.comments.length > 0 ? (
+                [...grievance.comments].reverse().map((comment: any) => {
+                  const isCurrentUser = user?.name === comment.userName;
+                  return (
+                  <div
+                    key={comment.commentId}
+                    className={`flex items-start gap-4 bg-white rounded-xl border shadow-md p-5 transition-all duration-150 relative hover:shadow-lg ${
+                    comment.isAdmin
+                      ? 'border-primary/40'
+                      : isCurrentUser
+                      ? 'border-blue-200'
+                      : 'border-border'
+                    }`}
+                    style={{ minHeight: 96, marginBottom: 16 }}
+                  >
+                    {/* Avatar/Initials */}
+                      <div className="flex-shrink-0 w-11 h-11 rounded-full bg-gradient-to-br from-gray-200 to-gray-100 flex items-center justify-center font-bold text-lg text-primary border border-gray-300 shadow-sm">
+                        {comment.userName ? comment.userName[0].toUpperCase() : '?'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold truncate text-base">{comment.userName}</span>
+                          {comment.isAdmin && <span className="text-xs text-primary ml-1 font-medium">(Admin)</span>}
+                          <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">{new Date(comment.createdAt).toLocaleString()}</span>
+                        </div>
+                        {editingCommentId === comment.commentId ? (
+                          <div className="flex gap-2 mt-1">
+                            <input
+                              ref={editInputRef}
+                              className="form-input flex-1"
+                              value={editingText}
+                              onChange={e => setEditingText(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleEditSave(comment.commentId);
+                                if (e.key === 'Escape') handleEditCancel();
+                              }}
+                            />
+                            <Button size="sm" onClick={() => handleEditSave(comment.commentId)} disabled={updateCommentMutation.isPending}>Save</Button>
+                            <Button size="sm" variant="outline" onClick={handleEditCancel}>Cancel</Button>
+                          </div>
+                        ) : (
+                          <p className="text-sm whitespace-pre-line break-words mt-1 text-gray-700">{comment.comment}</p>
+                        )}
+                      </div>
+                      {(user?.role === 'admin'|| 'user' || comment.userName === user?.name) && (
+                        <div className="flex flex-col sm:flex-row gap-2 items-center ml-3 mt-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditClick(comment)}
+                            disabled={editingCommentId !== null}
+                            className="hover:bg-blue-50"
+                            aria-label="Edit comment"
+                          >
+                            <Pencil className="w-4 h-4 text-blue-500" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteComment(comment.commentId)}
+                            disabled={editingCommentId !== null}
+                            className="hover:bg-red-50"
+                            aria-label="Delete comment"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-6 text-muted-foreground">
+                  No comments yet.
+                </div>
+              )}
+            </div>
         </div>
+        
       </div>
+
+            
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteConfirmId} onOpenChange={cancelDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Comment?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this comment? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelDelete}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleteCommentMutation.isPending}>
+              {deleteCommentMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };

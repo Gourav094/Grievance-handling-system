@@ -18,8 +18,16 @@ const GrievanceList = () => {
   const [currentStatus, setCurrentStatus] = useState<GrievanceStatus | 'all'>(statusFilter || 'all');
 
   const { data: grievances = [], isLoading, error } = useQuery({
-    queryKey: ['grievances'],
-    queryFn: () => grievanceApi.getAllGrievances(user.name),
+    queryKey: ['grievances', user?.role],
+    queryFn: () =>
+      user?.role === 'admin'
+        ? grievanceApi.getAllGrievances() // admin: fetch all
+        : grievanceApi.getAllGrievances(user.name), // user: only their grievances
+    enabled: !!user,
+    staleTime: 1000 * 60 * 3, // Cache data for 5 minutes
+    refetchOnWindowFocus: true, // Refetch data when the window regains focus
+    refetchOnReconnect: true, 
+    retry: 0 // Disable automatic retries
   });
 
   const filteredGrievances = useMemo(() => {
@@ -29,8 +37,9 @@ const GrievanceList = () => {
         grievance.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         grievance.id?.toString().toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchesStatus = currentStatus === 'all' || grievance.status === currentStatus;
 
+      const matchesStatus = currentStatus === 'all' || grievance.status === currentStatus;
+      console.log('Filtering grievances:', matchesSearch, matchesStatus, currentStatus, grievance);
       return matchesSearch && matchesStatus;
     });
   }, [grievances, searchTerm, currentStatus]);
@@ -70,7 +79,7 @@ const GrievanceList = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <input
               type="text"
-              placeholder="Search grievances..."
+              placeholder="Search grievances by title..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -85,8 +94,8 @@ const GrievanceList = () => {
               className="form-input py-2 px-3 rounded-md border border-border text-sm"
             >
               <option value="all">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="in-progress">In Progress</option>
+              <option value="Open">Open</option>
+              <option value="In Progress">In Progress</option>
               <option value="resolved">Resolved</option>
               <option value="rejected">Rejected</option>
             </select>
@@ -100,7 +109,7 @@ const GrievanceList = () => {
         </div>
       ) : error ? (
         <div className="bg-red-50 p-4 rounded-lg text-red-700 mb-6">
-          Failed to load grievances. Please try again later.
+          No Grievance Found. Please create one to see the details.
         </div>
       ) : (
         <div className="bg-card rounded-lg shadow border border-border overflow-hidden">
@@ -130,7 +139,7 @@ const GrievanceList = () => {
                     <td className="px-4 py-3">{grievance.category}</td>
                     <td className="px-4 py-3">
                       <span className={`
-                        ${grievance.status === 'pending' ? 'grievance-status-pending' : ''}
+                        ${grievance.status === 'open' ? 'grievance-status-open' : ''}
                         ${grievance.status === 'in-progress' ? 'grievance-status-inprogress' : ''}
                         ${grievance.status === 'resolved' ? 'grievance-status-resolved' : ''}
                         ${grievance.status === 'rejected' ? 'grievance-status-rejected' : ''}
